@@ -13,6 +13,7 @@ Uses only the Python standard library.
 import argparse
 import json
 import os
+import re
 import secrets
 import sys
 import urllib.error
@@ -67,14 +68,15 @@ def request_json(url, form=None, token=None):
     req = urllib.request.Request(url, data=data)
     if token:
         req.add_header("Authorization", f"Bearer {token}")
-    host = urllib.parse.urlparse(url).netloc
+    # Shown in errors: the request without any API key in the query string.
+    where = f"{'POST' if data else 'GET'} {re.sub(r'api_key=[^&]*', 'api_key=...', url)}"
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as err:
-        raise ApiError(f"{host} returned {err.code}: {err.read().decode()[:500]}")
+        raise ApiError(f"{where}\n  returned {err.code}: {err.read().decode()[:500]}")
     except (urllib.error.URLError, ValueError) as err:
-        raise ApiError(f"Could not get a usable response from {host}: {err}")
+        raise ApiError(f"{where}\n  failed: {err}")
 
 
 def token_request(**grant):
@@ -150,10 +152,10 @@ def get_access_token():
     return token["access_token"]
 
 
-def fetch_activities(access_token, after=None):
+def fetch_activities(access_token, after=None, per_page=200):
     page = 1
     while True:
-        params = {"per_page": 200, "page": page}
+        params = {"per_page": per_page, "page": page}
         if after is not None:
             params["after"] = after
         batch = request_json(
@@ -306,6 +308,7 @@ def main():
     parser.add_argument("--auth", action="store_true", help="connect your Strava account")
     parser.add_argument("--full", action="store_true", help="re-read all Strava history")
     parser.add_argument("--reprice", action="store_true", help="re-price all rides at current rates")
+    parser.add_argument("--per-page", type=int, default=200, help="activities per request (max 200)")
     args = parser.parse_args()
 
     load_env()
@@ -320,7 +323,17 @@ def main():
         latest = datetime.fromisoformat(max(r["date"] for r in rides)).replace(tzinfo=timezone.utc)
         after = int((latest - OVERLAP).timestamp())
 
-    activities = list(fetch_activities(get_access_token(), after))
+    access_token = get_access_token()
+    try:
+        activities = list(fetch_activities(access_token, after, args.per_page))
+    except ApiError as err:
+        # Tell a bad login apart from a problem with the activity list itself.
+        try:
+            athlete = request_json("https://www.strava.com/api/v3/athlete", token=access_token)
+            note = f"The login itself works (athlete id {athlete.get('id')})."
+        except ApiError as profile_err:
+            note = f"Reading your profile failed too:\n{profile_err}"
+        raise ApiError(f"{err}\n{note}")
     gas_prices = fetch_gas_prices(config)
     rides, added = merge(rides, activities, config, gas_prices, reprice=args.reprice)
     summary = summarize(rides, config)
