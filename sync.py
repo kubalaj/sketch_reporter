@@ -5,6 +5,7 @@
     python3 sync.py             fetch new rides and update data/rides.json
     python3 sync.py --full      re-read your whole Strava history
     python3 sync.py --reprice   re-price every ride at the rates in config.json
+                                and the gas price for the week of each ride
 
 Uses only the Python standard library.
 """
@@ -33,9 +34,13 @@ REDIRECT_URI = f"http://localhost:{AUTH_PORT}/callback"
 METERS_PER_MILE = 1609.344
 KG_PER_LB = 0.45359237
 EBIKE_SPORT_TYPES = {"EBikeRide", "EMountainBikeRide"}
-RATE_KEYS = ("mpg", "gas_price", "wear_per_mile", "co2_kg_per_gallon")
+RATE_KEYS = ("mpg", "wear_per_mile", "co2_kg_per_gallon")
 # Each sync re-reads this much history so renamed or edited rides are picked up.
 OVERLAP = timedelta(days=14)
+
+
+class ApiError(Exception):
+    pass
 
 
 # ---------- Strava ----------
@@ -62,11 +67,14 @@ def request_json(url, form=None, token=None):
     req = urllib.request.Request(url, data=data)
     if token:
         req.add_header("Authorization", f"Bearer {token}")
+    host = urllib.parse.urlparse(url).netloc
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as err:
-        sys.exit(f"Strava returned {err.code} for {url.split('?')[0]}: {err.read().decode()[:500]}")
+        raise ApiError(f"{host} returned {err.code}: {err.read().decode()[:500]}")
+    except (urllib.error.URLError, ValueError) as err:
+        raise ApiError(f"Could not get a usable response from {host}: {err}")
 
 
 def token_request(**grant):
@@ -158,6 +166,50 @@ def fetch_activities(access_token, after=None):
         page += 1
 
 
+# ---------- gas prices ----------
+
+
+def fetch_gas_prices(config):
+    """Weekly pump prices from the U.S. Energy Information Administration,
+    as a list of (week, dollars per gallon), oldest first.
+
+    Returns an empty list when there is no API key or the lookup fails, in
+    which case rides fall back to gas_price in config.json.
+    """
+    key = os.environ.get("EIA_API_KEY")
+    if not key:
+        print("No EIA_API_KEY set; using gas_price from config.json.")
+        return []
+    query = urllib.parse.urlencode(
+        {
+            "api_key": key,
+            "frequency": "weekly",
+            "data[0]": "value",
+            "facets[series][]": config["gas_price_series"],
+            "sort[0][column]": "period",
+            "sort[0][direction]": "desc",
+            "length": 520,  # ten years of weeks
+        }
+    )
+    try:
+        rows = request_json(f"https://api.eia.gov/v2/petroleum/pri/gnd/data/?{query}")["response"]["data"]
+        prices = sorted((row["period"], float(row["value"])) for row in rows if row.get("value"))
+    except (ApiError, KeyError, TypeError, ValueError) as err:
+        print(f"::warning::Gas price lookup failed, using gas_price from config.json. {err}")
+        return []
+    if not prices:
+        print(f"::warning::No gas prices returned for series {config['gas_price_series']}.")
+    return prices
+
+
+def gas_price_on(gas_prices, day, fallback):
+    """The weekly price in effect on a ride's date (YYYY-MM-DD...)."""
+    if not gas_prices:
+        return fallback
+    earlier = [price for week, price in gas_prices if week <= day[:10]]
+    return earlier[-1] if earlier else gas_prices[0][1]
+
+
 # ---------- rides and savings ----------
 
 
@@ -169,6 +221,11 @@ def is_ebike_ride(activity, config):
     return bool(config["match_sport_type"]) and sport in EBIKE_SPORT_TYPES
 
 
+def set_rates(ride, config, gas_prices):
+    ride.update({key: config[key] for key in RATE_KEYS})
+    ride["gas_price"] = gas_price_on(gas_prices, ride["date"], config["gas_price"])
+
+
 def price(ride):
     """Work out savings from the ride's miles and the rates stored on it."""
     gallons = ride["miles"] / ride["mpg"]
@@ -178,12 +235,12 @@ def price(ride):
     ride["co2_saved_kg"] = round(gallons * ride["co2_kg_per_gallon"], 4)
 
 
-def merge(rides, activities, config, reprice=False):
+def merge(rides, activities, config, gas_prices=(), reprice=False):
     """Fold Strava activities into the existing ride list.
 
-    A new ride is priced at today's config and keeps those rates, so a later
-    gas price change only affects later rides (unless reprice is set).
-    Returns (rides sorted oldest first, number added).
+    A new ride gets the gas price for the week it happened and the other
+    rates from today's config, and keeps them from then on (unless reprice
+    is set). Returns (rides sorted oldest first, number added).
     """
     by_id = {ride["id"]: ride for ride in rides}
     added = 0
@@ -191,20 +248,22 @@ def merge(rides, activities, config, reprice=False):
         if not is_ebike_ride(activity, config):
             continue
         ride = by_id.get(activity["id"])
-        if ride is None:
+        is_new = ride is None
+        if is_new:
             ride = by_id[activity["id"]] = {"id": activity["id"]}
-            ride.update({key: config[key] for key in RATE_KEYS})
             added += 1
         ride["name"] = activity["name"]
         ride["sport_type"] = activity.get("sport_type") or activity.get("type")
         ride["date"] = activity.get("start_date_local", activity["start_date"]).rstrip("Z")
         ride["miles"] = round(activity["distance"] / METERS_PER_MILE, 3)
         ride["moving_time_s"] = activity.get("moving_time")
+        if is_new:
+            set_rates(ride, config, gas_prices)
 
     excluded = set(config.get("exclude_ids", []))
     for ride in by_id.values():
         if reprice:
-            ride.update({key: config[key] for key in RATE_KEYS})
+            set_rates(ride, config, gas_prices)
         ride["excluded"] = ride["id"] in excluded
         price(ride)
     return sorted(by_id.values(), key=lambda r: r["date"]), added
@@ -262,7 +321,8 @@ def main():
         after = int((latest - OVERLAP).timestamp())
 
     activities = list(fetch_activities(get_access_token(), after))
-    rides, added = merge(rides, activities, config, reprice=args.reprice)
+    gas_prices = fetch_gas_prices(config)
+    rides, added = merge(rides, activities, config, gas_prices, reprice=args.reprice)
     summary = summarize(rides, config)
 
     DATA_FILE.parent.mkdir(exist_ok=True)
@@ -270,6 +330,11 @@ def main():
         json.dumps(
             {
                 "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "gas_price": {
+                    "source": f"EIA weekly series {config['gas_price_series']}" if gas_prices else "config.json",
+                    "week": gas_prices[-1][0] if gas_prices else None,
+                    "dollars_per_gallon": gas_prices[-1][1] if gas_prices else config["gas_price"],
+                },
                 "summary": summary,
                 "rides": rides,
             },
@@ -278,6 +343,8 @@ def main():
         + "\n"
     )
     print(f"Checked {len(activities)} activities, added {added} new e-bike rides.")
+    if gas_prices:
+        print(f"Gas: ${gas_prices[-1][1]:.2f}/gal for the week of {gas_prices[-1][0]}.")
     print(
         f"{summary['rides']} rides, {summary['miles']} miles, ${summary['total_saved']:.2f} saved "
         f"({summary['paid_off_pct']}% of the bike), {summary['co2_saved_kg']} kg CO2 avoided."
@@ -285,4 +352,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ApiError as err:
+        sys.exit(str(err))

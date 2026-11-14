@@ -18,10 +18,17 @@ Each ride's distance stands in for the drive it replaced:
 | Wear and tear saved | `miles * wear_per_mile` |
 | CO2 saved | `miles / mpg * 8.887 kg` (EPA figure per gallon of gasoline) |
 
-The rates live in [`config.json`](config.json). A ride is priced with the
-rates in effect when it is first synced and keeps them, so updating the gas
-price only affects later rides. Run `python3 sync.py --reprice` to re-price
-everything at the current rates.
+`mpg` and `wear_per_mile` live in [`config.json`](config.json) and are set
+for a lifted 2021 Ford Ranger on 285/70R17 all-terrains.
+
+**Gas price** is looked up per ride: each ride uses the average price of
+regular gas for the week it happened, from the U.S. Energy Information
+Administration's weekly San Francisco series (the closest one it publishes
+to Oakland). Without an `EIA_API_KEY`, or if the lookup fails, rides use
+`gas_price` from `config.json` instead.
+
+A ride keeps the rates it was first synced with. Run
+`python3 sync.py --reprice` to re-price every ride.
 
 ## Setup
 
@@ -30,6 +37,8 @@ Strava requires a paid subscription for API access.
 1. Create an API application at <https://www.strava.com/settings/api> and set
    **Authorization Callback Domain** to `localhost`.
 2. Copy `.env.example` to `.env` and fill in the client ID and secret.
+   For weekly gas prices, also add a free API key from
+   <https://www.eia.gov/opendata/register.php> as `EIA_API_KEY`.
 3. Edit `config.json` to match your car.
 4. Connect your Strava account (opens a browser; port 8000 must be free):
 
@@ -52,6 +61,7 @@ In the repo, go to **Settings > Secrets and variables > Actions** and add:
 | `STRAVA_CLIENT_ID` | from your Strava API application |
 | `STRAVA_CLIENT_SECRET` | from your Strava API application |
 | `STRAVA_REFRESH_TOKEN` | printed at the end of `python3 sync.py --auth` |
+| `EIA_API_KEY` | your EIA API key (optional) |
 
 The workflow in `.github/workflows/sync.yml` then runs every Monday, and can
 be run by hand from the **Actions** tab. If Strava ever replaces the refresh
@@ -69,6 +79,10 @@ from `rides.json` to `exclude_ids` in `config.json`.
 ```json
 {
   "updated_at": "2026-11-16T09:00:12+00:00",
+  "gas_price": {
+    "source": "EIA weekly series EMM_EPMR_PTE_Y05SF_DPG",
+    "week": "2026-11-09", "dollars_per_gallon": 4.87
+  },
   "summary": {
     "rides": 42, "miles": 512.3,
     "gas_saved": 71.72, "wear_saved": 51.23, "total_saved": 122.95,

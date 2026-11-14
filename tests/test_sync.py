@@ -12,6 +12,7 @@ CONFIG = {
     "gas_price": 3.50,
     "wear_per_mile": 0.10,
     "co2_kg_per_gallon": 8.887,
+    "gas_price_series": "TEST",
     "bike_cost": 3300,
     "title_match": "e-bike",
     "match_sport_type": True,
@@ -74,6 +75,43 @@ class SyncTests(unittest.TestCase):
 
         rides, _ = sync.merge(rides, [], pricier, reprice=True)
         self.assertAlmostEqual(rides[0]["gas_saved"], 4.00)
+
+    def test_rides_use_the_gas_price_for_their_week(self):
+        weekly = [("2026-05-25", 5.00), ("2026-06-01", 5.25), ("2026-06-08", 5.50)]
+        rides, _ = sync.merge(
+            [],
+            [
+                activity(1, "E-Bike Ride", 25, date="2026-01-10T08:00:00Z"),  # before the series
+                activity(2, "E-Bike Ride", 25, date="2026-06-01T08:00:00Z"),  # on a publish day
+                activity(3, "E-Bike Ride", 25, date="2026-06-07T08:00:00Z"),  # later that week
+                activity(4, "E-Bike Ride", 25, date="2026-07-04T08:00:00Z"),  # after the series
+            ],
+            CONFIG,
+            weekly,
+        )
+        self.assertEqual([r["gas_price"] for r in rides], [5.00, 5.25, 5.25, 5.50])
+        self.assertAlmostEqual(rides[1]["gas_saved"], 5.25)  # 25 mi at 25 mpg is one gallon
+        self.assertEqual(sync.gas_price_on([], "2026-06-01", 3.50), 3.50)
+
+    def test_gas_lookup_parses_eia_response_and_survives_failure(self):
+        import os
+        from unittest import mock
+
+        payload = {"response": {"data": [
+            {"period": "2026-06-08", "value": "5.5"},
+            {"period": "2026-06-01", "value": 5.25},
+            {"period": "2026-05-25", "value": None},
+        ]}}
+        with mock.patch.dict(os.environ, {"EIA_API_KEY": "k"}):
+            with mock.patch.object(sync, "request_json", return_value=payload) as req:
+                self.assertEqual(
+                    sync.fetch_gas_prices(CONFIG), [("2026-06-01", 5.25), ("2026-06-08", 5.5)]
+                )
+                self.assertIn("facets%5Bseries%5D%5B%5D=TEST", req.call_args[0][0])
+            with mock.patch.object(sync, "request_json", side_effect=sync.ApiError("boom")):
+                self.assertEqual(sync.fetch_gas_prices(CONFIG), [])
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(sync.fetch_gas_prices(CONFIG), [])
 
     def test_summary_and_exclusions(self):
         activities = [
