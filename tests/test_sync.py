@@ -131,6 +131,36 @@ class SyncTests(unittest.TestCase):
         rides, _ = sync.merge(rides, [], {**CONFIG, "exclude_ids": [2]})
         self.assertEqual(sync.summarize(rides, CONFIG)["total_saved"], 2.40)
 
+    def test_broken_activity_is_skipped_not_fatal(self):
+        from unittest import mock
+        from urllib.parse import parse_qs, urlparse
+
+        everything = list(range(1, 1301))  # activity ids, in listing order
+        broken = {1037, 1205}
+        calls = []
+
+        def fake_strava(url, form=None, token=None):
+            calls.append(url)
+            query = parse_qs(urlparse(url).query)
+            size, page = int(query["per_page"][0]), int(query["page"][0])
+            items = everything[(page - 1) * size : page * size]
+            if broken & set(items):
+                raise sync.ApiError("Record Not Found", 404)
+            return [{"id": i} for i in items]
+
+        with mock.patch.object(sync, "request_json", side_effect=fake_strava):
+            activities, skipped = sync.fetch_activities("token")
+        self.assertEqual([a["id"] for a in activities], [i for i in everything if i not in broken])
+        self.assertEqual(skipped, [1037, 1205])
+        self.assertLess(len(calls), 50)
+
+        def rate_limited(url, form=None, token=None):
+            raise sync.ApiError("Rate Limit Exceeded", 429)
+
+        with mock.patch.object(sync, "request_json", side_effect=rate_limited):
+            with self.assertRaises(sync.ApiError):
+                sync.fetch_activities("token")
+
     def test_empty_summary(self):
         summary = sync.summarize([], CONFIG)
         self.assertEqual(summary["total_saved"], 0)

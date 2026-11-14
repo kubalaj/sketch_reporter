@@ -41,7 +41,9 @@ OVERLAP = timedelta(days=14)
 
 
 class ApiError(Exception):
-    pass
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 # ---------- Strava ----------
@@ -74,7 +76,7 @@ def request_json(url, form=None, token=None):
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as err:
-        raise ApiError(f"{where}\n  returned {err.code}: {err.read().decode()[:500]}")
+        raise ApiError(f"{where}\n  returned {err.code}: {err.read().decode()[:500]}", err.code)
     except (urllib.error.URLError, ValueError) as err:
         raise ApiError(f"{where}\n  failed: {err}")
 
@@ -152,19 +154,48 @@ def get_access_token():
     return token["access_token"]
 
 
-def fetch_activities(access_token, after=None, per_page=200):
-    page = 1
+# When Strava can't return a page of activities, retry it in pieces of this size.
+SMALLER_PAGE = {200: 100, 100: 50, 50: 25, 25: 5, 5: 1}
+
+
+def fetch_block(access_token, size, index, after, skipped):
+    """Activities number index*size up to (index+1)*size in Strava's listing.
+
+    Strava answers 404 for a whole page when one activity in it has a broken
+    record on their side. In that case, split the page into smaller ones
+    until the broken activity is isolated, note it in `skipped`, and return
+    everything else.
+    """
+    params = {"per_page": size, "page": index + 1}
+    if after is not None:
+        params["after"] = after
+    url = "https://www.strava.com/api/v3/athlete/activities?" + urllib.parse.urlencode(params)
+    try:
+        return request_json(url, token=access_token)
+    except ApiError as err:
+        if err.status != 404:
+            raise
+    if size == 1:
+        skipped.append(index + 1)
+        return []
+    smaller = SMALLER_PAGE[size]
+    pieces = size // smaller
+    found = []
+    for piece in range(pieces):
+        found += fetch_block(access_token, smaller, index * pieces + piece, after, skipped)
+    return found
+
+
+def fetch_activities(access_token, after=None):
+    """Every activity (optionally only those after an epoch time), plus the
+    positions of any that Strava could not return."""
+    activities, skipped, page = [], [], 0
     while True:
-        params = {"per_page": per_page, "page": page}
-        if after is not None:
-            params["after"] = after
-        batch = request_json(
-            "https://www.strava.com/api/v3/athlete/activities?" + urllib.parse.urlencode(params),
-            token=access_token,
-        )
-        if not batch:
-            return
-        yield from batch
+        skipped_before = len(skipped)
+        batch = fetch_block(access_token, 200, page, after, skipped)
+        if not batch and len(skipped) == skipped_before:
+            return activities, skipped
+        activities += batch
         page += 1
 
 
@@ -308,7 +339,6 @@ def main():
     parser.add_argument("--auth", action="store_true", help="connect your Strava account")
     parser.add_argument("--full", action="store_true", help="re-read all Strava history")
     parser.add_argument("--reprice", action="store_true", help="re-price all rides at current rates")
-    parser.add_argument("--per-page", type=int, default=200, help="activities per request (max 200)")
     args = parser.parse_args()
 
     load_env()
@@ -325,7 +355,7 @@ def main():
 
     access_token = get_access_token()
     try:
-        activities = list(fetch_activities(access_token, after, args.per_page))
+        activities, skipped = fetch_activities(access_token, after)
     except ApiError as err:
         # Tell a bad login apart from a problem with the activity list itself.
         try:
@@ -356,6 +386,11 @@ def main():
         + "\n"
     )
     print(f"Checked {len(activities)} activities, added {added} new e-bike rides.")
+    if skipped:
+        print(
+            f"Skipped {len(skipped)} that Strava could not return (broken on their side), "
+            f"at position {', '.join(map(str, skipped))} in your activity list."
+        )
     if gas_prices:
         print(f"Gas: ${gas_prices[-1][1]:.2f}/gal for the week of {gas_prices[-1][0]}.")
     print(
