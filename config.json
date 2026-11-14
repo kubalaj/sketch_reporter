@@ -1,0 +1,10 @@
+{
+  "mpg": 25,
+  "gas_price": 3.50,
+  "wear_per_mile": 0.10,
+  "co2_kg_per_gallon": 8.887,
+  "bike_cost": 3300,
+  "title_match": "e-bike",
+  "match_sport_type": true,
+  "exclude_ids": []
+}

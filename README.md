@@ -1,11 +1,12 @@
-# E-Bike Savings
+# Sketch Reporter
 
-Self-hosted tracker for how much money and carbon an e-bike saves compared
-with driving. It pulls e-bike rides from Strava on a schedule and, for each
-one, works out the gas, car wear and tear, and CO2 the same trip would have
-cost by car, then keeps a running total against what the bike cost.
+Tracks how much money and carbon my Santa Cruz Sketch e-bike has saved
+compared with driving, and how close it is to paying for itself.
 
-This is the backend: a FastAPI app with a SQLite database. The frontend comes next.
+One script, `sync.py`, pulls e-bike rides from Strava and writes
+[`data/rides.json`](data/rides.json). A GitHub Actions job runs it every
+Monday and commits the updated file. There is no server and no database, and
+the script uses only the Python standard library.
 
 ## How savings are calculated
 
@@ -17,75 +18,81 @@ Each ride's distance stands in for the drive it replaced:
 | Wear and tear saved | `miles * wear_per_mile` |
 | CO2 saved | `miles / mpg * 8.887 kg` (EPA figure per gallon of gasoline) |
 
-The rates in effect when a ride is first recorded are stored on that ride, so
-changing the gas price later only affects new rides. To re-price everything
-at the current settings, call `POST /api/rides/recalculate`.
+The rates live in [`config.json`](config.json). A ride is priced with the
+rates in effect when it is first synced and keeps them, so updating the gas
+price only affects later rides. Run `python3 sync.py --reprice` to re-price
+everything at the current rates.
 
 ## Setup
 
-1. Create a Strava API application at <https://www.strava.com/settings/api>.
-   Set **Authorization Callback Domain** to the host you will reach this app
-   on (`localhost` when running locally).
-2. Copy `.env.example` to `.env` and fill in the client ID and secret. Set the
-   default rates to match your car.
-3. Start it:
+Strava requires a paid subscription for API access.
+
+1. Create an API application at <https://www.strava.com/settings/api> and set
+   **Authorization Callback Domain** to `localhost`.
+2. Copy `.env.example` to `.env` and fill in the client ID and secret.
+3. Edit `config.json` to match your car.
+4. Connect your Strava account (opens a browser; port 8000 must be free):
 
    ```bash
-   docker compose up -d --build
+   python3 sync.py --auth
    ```
 
-4. Open <http://localhost:8000/auth/strava/login> and approve access.
-5. Import your ride history:
+5. Pull your rides:
 
    ```bash
-   curl -X POST http://localhost:8000/api/sync
+   python3 sync.py
    ```
 
-After that it syncs on the `SYNC_CRON` schedule (weekly by default).
-Interactive API docs are at <http://localhost:8000/docs>.
+## Weekly sync on GitHub
+
+In the repo, go to **Settings > Secrets and variables > Actions** and add:
+
+| Secret | Value |
+| --- | --- |
+| `STRAVA_CLIENT_ID` | from your Strava API application |
+| `STRAVA_CLIENT_SECRET` | from your Strava API application |
+| `STRAVA_REFRESH_TOKEN` | printed at the end of `python3 sync.py --auth` |
+
+The workflow in `.github/workflows/sync.yml` then runs every Monday, and can
+be run by hand from the **Actions** tab. If Strava ever replaces the refresh
+token, the run prints a warning; repeat step 4 and update the secret.
 
 ## Which rides count
 
-A Strava activity is imported when its title contains the `title_match`
-setting (default `e-bike`, case-insensitive), or when Strava classifies it as
-an e-bike ride and `match_sport_type` is on. If a ride didn't replace a car
-trip, exclude it from the totals with
-`PATCH /api/rides/{id}` and `{"excluded": true}`.
+An activity counts when its title contains `title_match` (default `e-bike`,
+case-insensitive), or when Strava classifies it as an e-bike ride and
+`match_sport_type` is `true`. To leave a ride out of the totals, add its `id`
+from `rides.json` to `exclude_ids` in `config.json`.
 
-## API
+## The data file
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/summary` | Totals, percent of the bike paid off, projected payoff date |
-| `GET /api/summary/timeseries?bucket=day\|week\|month\|year` | Per-period and cumulative totals |
-| `GET /api/rides` | Rides, newest first |
-| `POST /api/rides` | Log a ride that isn't on Strava |
-| `PATCH /api/rides/{id}` | Exclude or re-include a ride |
-| `POST /api/rides/recalculate` | Re-price all rides at the current settings |
-| `GET`, `PATCH /api/settings` | MPG, gas price, wear rate, bike cost, title filter |
-| `POST /api/sync` | Sync now (`?full=true` re-reads all history) |
-| `GET /api/status`, `GET /api/syncs` | Connection state and sync history |
-
-## Development
-
-```bash
-python3 -m venv .venv
+```json
+{
+  "updated_at": "2026-11-16T09:00:12+00:00",
+  "summary": {
+    "rides": 42, "miles": 512.3,
+    "gas_saved": 71.72, "wear_saved": 51.23, "total_saved": 122.95,
+    "co2_saved_kg": 182.11, "co2_saved_lbs": 401.48,
+    "bike_cost": 3300, "remaining": 3177.05, "paid_off_pct": 3.73,
+    "projected_payoff_date": "2031-04-02"
+  },
+  "rides": [
+    {
+      "id": 123, "name": "Morning E-Bike Ride", "sport_type": "EBikeRide",
+      "date": "2026-06-01T08:00:00", "miles": 10.0, "moving_time_s": 1800,
+      "mpg": 25, "gas_price": 3.5, "wear_per_mile": 0.1, "co2_kg_per_gallon": 8.887,
+      "gas_saved": 1.4, "wear_saved": 1.0, "total_saved": 2.4, "co2_saved_kg": 3.5548,
+      "excluded": false
+    }
+  ]
+}
 ```
 
-```bash
-.venv/bin/pip install -e '.[dev]'
-```
+`projected_payoff_date` is a straight-line projection from average savings
+per day since the first ride.
+
+## Tests
 
 ```bash
-.venv/bin/pytest
+python3 -m unittest discover tests
 ```
-
-```bash
-.venv/bin/uvicorn app.main:app --reload
-```
-
-## Security
-
-The API has no login of its own. Keep it on your home network or behind a
-reverse proxy that handles authentication; don't expose port 8000 to the
-internet directly.
