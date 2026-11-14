@@ -1,7 +1,7 @@
 {
   "mpg": 17,
   "wear_per_mile": 0.13,
-  "gas_price": 4.75,
+  "gas_price": 5.50,
   "gas_price_series": "EMM_EPMR_PTE_Y05SF_DPG",
   "co2_kg_per_gallon": 8.887,
   "bike_cost": 3300,
