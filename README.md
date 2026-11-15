@@ -8,6 +8,23 @@ One script, `sync.py`, pulls e-bike rides from Strava and writes
 evening and commits the updated file. There is no server and no database, and
 the script uses only the Python standard library.
 
+## The dashboard
+
+`index.html` is a static page that reads `data/rides.json` in the browser and
+shows the totals, a savings-over-time chart and the ride list. It has no
+build step or dependencies; the code is in `web/`. It is meant to be served
+by GitHub Pages from the root of `main` (repo **Settings > Pages**), so each
+nightly data commit updates the site.
+
+To view it locally (opening the file directly won't work, since the page
+loads the data over HTTP):
+
+```bash
+python3 -m http.server 8000
+```
+
+Then open <http://localhost:8000>.
+
 ## How savings are calculated
 
 Each ride's distance stands in for the drive it replaced:

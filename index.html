@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sketch Reporter</title>
+    <meta name="description" content="What my e-bike has saved compared with driving." />
+    <link rel="stylesheet" href="web/style.css" />
+    <script type="module" src="web/app.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <header class="masthead">
+        <h1>Sketch Reporter</h1>
+        <p>What the e-bike has saved compared with driving the truck.</p>
+      </header>
+
+      <p id="status" class="status" role="status">Loading rides…</p>
+
+      <div id="report" hidden>
+        <section class="card hero" aria-labelledby="hero-label">
+          <p class="label" id="hero-label">Saved so far</p>
+          <p class="hero-value" id="total-saved"></p>
+          <div
+            class="meter"
+            id="meter"
+            role="progressbar"
+            aria-label="Share of the bike's cost paid off"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <div class="meter-fill" id="meter-fill"></div>
+          </div>
+          <p class="hero-note" id="payoff-note"></p>
+        </section>
+
+        <section class="tiles" id="tiles" aria-label="Totals"></section>
+
+        <section class="card" aria-labelledby="split-title">
+          <h2 id="split-title">Where the savings come from</h2>
+          <div class="split-bar" id="split-bar" role="img"></div>
+          <ul class="legend" id="split-legend"></ul>
+        </section>
+
+        <section class="card" aria-labelledby="chart-title">
+          <h2 id="chart-title">Savings over time</h2>
+          <p class="card-note">Running total, stepping up with each ride.</p>
+          <div class="chart" id="chart"></div>
+        </section>
+
+        <section class="card" aria-labelledby="rides-title">
+          <h2 id="rides-title">Rides</h2>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Ride</th>
+                  <th scope="col" class="num">Miles</th>
+                  <th scope="col" class="num">Gas price</th>
+                  <th scope="col" class="num">Gas</th>
+                  <th scope="col" class="num">Wear</th>
+                  <th scope="col" class="num">Saved</th>
+                  <th scope="col" class="num">CO₂ (lb)</th>
+                </tr>
+              </thead>
+              <tbody id="rides"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <footer class="footnote" id="footnote"></footer>
+      </div>
+    </main>
+  </body>
+</html>
