@@ -65,7 +65,7 @@ def credentials():
         sys.exit(f"{missing.args[0]} is not set. Put it in .env (see README).")
 
 
-def request_json(url, form=None, token=None):
+def request_json(url, form=None, token=None, timeout=30):
     data = urllib.parse.urlencode(form).encode() if form else None
     req = urllib.request.Request(url, data=data)
     if token:
@@ -73,11 +73,11 @@ def request_json(url, form=None, token=None):
     # Shown in errors: the request without any API key in the query string.
     where = f"{'POST' if data else 'GET'} {re.sub(r'api_key=[^&]*', 'api_key=...', url)}"
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as err:
         raise ApiError(f"{where}\n  returned {err.code}: {err.read().decode()[:500]}", err.code)
-    except (urllib.error.URLError, ValueError) as err:
+    except (OSError, ValueError) as err:  # timeouts, connection errors, bad JSON
         raise ApiError(f"{where}\n  failed: {err}")
 
 
@@ -224,8 +224,15 @@ def fetch_gas_prices(config):
             "length": 520,  # ten years of weeks
         }
     )
+    url = f"https://api.eia.gov/v2/petroleum/pri/gnd/data/?{query}"
     try:
-        rows = request_json(f"https://api.eia.gov/v2/petroleum/pri/gnd/data/?{query}")["response"]["data"]
+        try:
+            rows = request_json(url, timeout=60)["response"]["data"]
+        except ApiError as err:
+            if err.status is not None:
+                raise
+            print("Gas price service did not answer, trying once more...")
+            rows = request_json(url, timeout=120)["response"]["data"]
         prices = sorted((row["period"], float(row["value"])) for row in rows if row.get("value"))
     except (ApiError, KeyError, TypeError, ValueError) as err:
         print(f"::warning::Gas price lookup failed, using gas_price from config.json. {err}")

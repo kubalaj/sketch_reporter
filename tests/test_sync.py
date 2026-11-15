@@ -114,6 +114,13 @@ class SyncTests(unittest.TestCase):
                 self.assertIn("facets%5Bseries%5D%5B%5D=TEST", req.call_args[0][0])
             with mock.patch.object(sync, "request_json", side_effect=sync.ApiError("boom")):
                 self.assertEqual(sync.fetch_gas_prices(CONFIG), [])
+            # a timeout is retried once, then gives up quietly
+            with mock.patch.object(sync, "request_json", side_effect=[sync.ApiError("slow"), payload]):
+                self.assertEqual(len(sync.fetch_gas_prices(CONFIG)), 2)
+            import socket
+
+            with mock.patch("urllib.request.urlopen", side_effect=socket.timeout("timed out")):
+                self.assertEqual(sync.fetch_gas_prices(CONFIG), [])
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(sync.fetch_gas_prices(CONFIG), [])
 

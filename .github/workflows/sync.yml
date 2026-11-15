@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 9 * * 1" # Mondays 09:00 UTC
   workflow_dispatch: # lets you run it by hand from the Actions tab
+    inputs:
+      reprice:
+        description: Re-price every ride (current config, each ride's own week's gas price)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -15,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Pull rides from Strava
-        run: python3 sync.py
+        run: python3 sync.py ${{ inputs.reprice && '--reprice' || '' }}
         env:
           STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
           STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
