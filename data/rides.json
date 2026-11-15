@@ -1,0 +1,57 @@
+{
+  "updated_at": "2026-11-15T13:51:21+00:00",
+  "gas_price": {
+    "source": "config.json",
+    "week": null,
+    "dollars_per_gallon": 5.5
+  },
+  "summary": {
+    "rides": 2,
+    "miles": 22.27,
+    "gas_saved": 7.65,
+    "wear_saved": 2.89,
+    "total_saved": 10.55,
+    "co2_saved_kg": 12.37,
+    "co2_saved_lbs": 27.26,
+    "bike_cost": 3300,
+    "remaining": 3289.45,
+    "paid_off_pct": 0.32,
+    "projected_payoff_date": "2028-07-30"
+  },
+  "rides": [
+    {
+      "id": 20978475026,
+      "name": "Afternoon E-Bike Ride",
+      "sport_type": "EBikeRide",
+      "date": "2026-11-13T15:54:30",
+      "miles": 14.434,
+      "moving_time_s": 2977,
+      "mpg": 16,
+      "wear_per_mile": 0.13,
+      "co2_kg_per_gallon": 8.887,
+      "gas_price": 5.5,
+      "excluded": false,
+      "gas_saved": 4.9617,
+      "wear_saved": 1.8764,
+      "total_saved": 6.8381,
+      "co2_saved_kg": 8.0172
+    },
+    {
+      "id": 20978800954,
+      "name": "Afternoon E-Bike Ride",
+      "sport_type": "EBikeRide",
+      "date": "2026-11-13T17:43:10",
+      "miles": 7.831,
+      "moving_time_s": 2018,
+      "mpg": 16,
+      "wear_per_mile": 0.13,
+      "co2_kg_per_gallon": 8.887,
+      "gas_price": 5.5,
+      "excluded": false,
+      "gas_saved": 2.6919,
+      "wear_saved": 1.018,
+      "total_saved": 3.7099,
+      "co2_saved_kg": 4.3496
+    }
+  ]
+}
