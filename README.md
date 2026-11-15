@@ -94,7 +94,7 @@ from `rides.json` to `exclude_ids` in `config.json`.
     {
       "id": 123, "name": "Morning E-Bike Ride", "sport_type": "EBikeRide",
       "date": "2026-06-01T08:00:00", "miles": 10.0, "moving_time_s": 1800,
-      "mpg": 25, "gas_price": 3.5, "wear_per_mile": 0.1, "co2_kg_per_gallon": 8.887,
+      "mpg": 16, "gas_price": 5.7, "gas_price_week": "2026-06-01", "wear_per_mile": 0.13, "co2_kg_per_gallon": 8.887,
       "gas_saved": 1.4, "wear_saved": 1.0, "total_saved": 2.4, "co2_saved_kg": 3.5548,
       "excluded": false
     }

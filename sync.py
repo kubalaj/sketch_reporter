@@ -236,11 +236,13 @@ def fetch_gas_prices(config):
 
 
 def gas_price_on(gas_prices, day, fallback):
-    """The weekly price in effect on a ride's date (YYYY-MM-DD...)."""
+    """The weekly price in effect on a ride's date (YYYY-MM-DD...), as
+    (dollars per gallon, week it was published). The week is None when the
+    price is the flat fallback from config.json."""
     if not gas_prices:
-        return fallback
-    earlier = [price for week, price in gas_prices if week <= day[:10]]
-    return earlier[-1] if earlier else gas_prices[0][1]
+        return fallback, None
+    earlier = [(price, week) for week, price in gas_prices if week <= day[:10]]
+    return earlier[-1] if earlier else gas_prices[0][::-1]
 
 
 # ---------- rides and savings ----------
@@ -256,7 +258,9 @@ def is_ebike_ride(activity, config):
 
 def set_rates(ride, config, gas_prices):
     ride.update({key: config[key] for key in RATE_KEYS})
-    ride["gas_price"] = gas_price_on(gas_prices, ride["date"], config["gas_price"])
+    ride["gas_price"], ride["gas_price_week"] = gas_price_on(
+        gas_prices, ride["date"], config["gas_price"]
+    )
 
 
 def price(ride):
@@ -297,6 +301,7 @@ def merge(rides, activities, config, gas_prices=(), reprice=False):
     for ride in by_id.values():
         if reprice:
             set_rates(ride, config, gas_prices)
+        ride.setdefault("gas_price_week", None)
         ride["excluded"] = ride["id"] in excluded
         price(ride)
     return sorted(by_id.values(), key=lambda r: r["date"]), added

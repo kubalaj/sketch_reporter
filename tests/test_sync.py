@@ -91,7 +91,11 @@ class SyncTests(unittest.TestCase):
         )
         self.assertEqual([r["gas_price"] for r in rides], [5.00, 5.25, 5.25, 5.50])
         self.assertAlmostEqual(rides[1]["gas_saved"], 5.25)  # 25 mi at 25 mpg is one gallon
-        self.assertEqual(sync.gas_price_on([], "2026-06-01", 3.50), 3.50)
+        self.assertEqual(
+            [r["gas_price_week"] for r in rides],
+            ["2026-05-25", "2026-06-01", "2026-06-01", "2026-06-08"],
+        )
+        self.assertEqual(sync.gas_price_on([], "2026-06-01", 3.50), (3.50, None))
 
     def test_gas_lookup_parses_eia_response_and_survives_failure(self):
         import os
