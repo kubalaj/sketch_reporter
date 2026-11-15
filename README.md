@@ -5,7 +5,7 @@ compared with driving, and how close it is to paying for itself.
 
 One script, `sync.py`, pulls e-bike rides from Strava and writes
 [`data/rides.json`](data/rides.json). A GitHub Actions job runs it every
-Monday and commits the updated file. There is no server and no database, and
+evening and commits the updated file. There is no server and no database, and
 the script uses only the Python standard library.
 
 ## How savings are calculated
@@ -63,7 +63,7 @@ In the repo, go to **Settings > Secrets and variables > Actions** and add:
 | `STRAVA_REFRESH_TOKEN` | printed at the end of `python3 sync.py --auth` |
 | `EIA_API_KEY` | your EIA API key (optional) |
 
-The workflow in `.github/workflows/sync.yml` then runs every Monday, and can
+The workflow in `.github/workflows/sync.yml` then runs every evening, and can
 be run by hand from the **Actions** tab. If Strava ever replaces the refresh
 token, the run prints a warning; repeat step 4 and update the secret.
 
