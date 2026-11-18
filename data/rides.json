@@ -1,9 +1,9 @@
 {
-  "updated_at": "2026-11-17T11:42:02+00:00",
+  "updated_at": "2026-11-18T11:29:07+00:00",
   "gas_price": {
     "source": "EIA weekly series EMM_EPMR_PTE_Y05SF_DPG",
-    "week": "2026-11-09",
-    "dollars_per_gallon": 5.447
+    "week": "2026-11-16",
+    "dollars_per_gallon": 5.289
   },
   "summary": {
     "rides": 2,
@@ -16,7 +16,7 @@
     "bike_cost": 3300,
     "remaining": 3289.53,
     "paid_off_pct": 0.32,
-    "projected_payoff_date": "2030-04-26"
+    "projected_payoff_date": "2031-03-07"
   },
   "rides": [
     {
