@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-11-19T11:27:58+00:00",
+  "updated_at": "2026-11-20T11:22:30+00:00",
   "gas_price": {
     "source": "EIA weekly series EMM_EPMR_PTE_Y05SF_DPG",
     "week": "2026-11-16",
@@ -16,7 +16,7 @@
     "bike_cost": 3300,
     "remaining": 3289.53,
     "paid_off_pct": 0.32,
-    "projected_payoff_date": "2032-01-16"
+    "projected_payoff_date": "2032-11-26"
   },
   "rides": [
     {
